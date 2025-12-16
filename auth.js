@@ -1,14 +1,33 @@
+const express = require("express");
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const db = require("../db");
+const router = express.Router();
 
-module.exports = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "No token" });
+router.post("/register", async (req, res) => {
+  const { email, password } = req.body;
+  const hash = await bcrypt.hash(password, 10);
+  db.query(
+    "INSERT INTO users (email, passwordHash) VALUES (?, ?)",
+    [email, hash],
+    () => res.json({ message: "User registered" })
+  );
+});
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch {
-    res.status(401).json({ message: "Invalid token" });
-  }
-};
+router.post("/login", (req, res) => {
+  const { email, password } = req.body;
+  db.query(
+    "SELECT * FROM users WHERE email=?",
+    [email],
+    async (err, results) => {
+      if (!results.length) return res.status(401).json({ message: "Invalid" });
+      const valid = await bcrypt.compare(password, results[0].passwordHash);
+      if (!valid) return res.status(401).json({ message: "Invalid" });
+
+      const token = jwt.sign({ id: results[0].id }, process.env.JWT_SECRET);
+      res.json({ token });
+    }
+  );
+});
+
+module.exports = router;
